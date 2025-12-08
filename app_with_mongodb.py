@@ -87,8 +87,11 @@ URL = f"http://{HOST}:{PORT}/"
 # --------------------------------------------------------------------------------------
 # Initialize MongoDB handler
 # You can change the connection string and database name here
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/")
-MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "cash_recon_db")
+MONGODB_URI = os.environ.get(
+    "MONGODB_URI", 
+    "mongodb+srv://admin:Admin123456@cluster0.z8yhqsg.mongodb.net/cash_recon?retryWrites=true&w=majority&appName=Cluster0"
+)
+MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "cash_recon")
 
 mongo_handler = MongoDBHandler(MONGODB_URI, MONGODB_DB_NAME)
 
