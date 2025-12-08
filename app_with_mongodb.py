@@ -78,8 +78,9 @@ ACCOUNTS_JSON = DATA_ROOT / "accounts.json"
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = "change-this-secret"
 
-HOST = "127.0.0.1"
-PORT = 8080
+# Railway/production deployment configuration
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", 8080))
 URL = f"http://{HOST}:{PORT}/"
 
 # --------------------------------------------------------------------------------------
@@ -2603,6 +2604,11 @@ def _open_browser_when_ready():
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+    
+    # Only auto-open browser in local development (not Railway/production)
+    is_production = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER") or os.environ.get("DYNO")
+    if not is_production:
+        threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+    
     app.run(host=HOST, port=PORT, debug=False,
             use_reloader=False, threaded=True)
