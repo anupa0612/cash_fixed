@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Reconciliation</title>
+    <style>
+        /* Add authentication header styles */
+        .auth-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .auth-header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .auth-header h1 {
+            font-size: 20px;
+            margin: 0;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+        
+        .auth-btn {
+            background: white;
+            color: #667eea;
+            padding: 8px 16px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .auth-btn:hover {
+            background: #f0f0f0;
+        }
+        
+        .admin-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid white;
+        }
+        
+        .admin-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Authentication Header -->
+    <div class="auth-header">
+        <div class="auth-header-left">
+            <h1>💼 Cash Reconciliation System</h1>
+        </div>
+        <div class="user-info">
+            <span class="user-badge">
+                👤 {{ current_user.username }}
+                {% if current_user.is_admin() %}
+                    (Admin)
+                {% endif %}
+            </span>
+            {% if current_user.is_admin() %}
+            <a href="{{ url_for('admin_users') }}" class="auth-btn admin-btn">
+                👥 Manage Users
+            </a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="auth-btn">
+                🚪 Logout
+            </a>
+        </div>
+    </div>
+    
+    <!-- Rest of the original reconciliation.html content goes here -->
+
+
+  <header id="appHeader" aria-label="Main header">
+    <div class="nav">
+        <a href="javascript:void(0)" onclick="goToHome()" class="brand">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3l8.66 5v8L12 21l-8.66-5V8L12 3z" stroke="#38bdf8" stroke-width="1.4" />
+            <circle cx="12" cy="12" r="2.2" fill="#38bdf8" />
+          </svg>
+          <div>
+            <h1>Cash Reconciliation · Pro</h1>
+            <div class="tag">Pick account → date range → Upload AT & Broker → Build Rec → Auto-match → Export</div>
+          </div>
+        </a>
+      <div class="toolbar">
+        <a class="btn ghost" href="{{ url_for('index') }}" title="Start a fresh upload">New Upload</a>
+        <button class="btn bad" onclick="resetSession()" title="Clear session and start over">Reset</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    {% if stage == 'upload' %}
+    <section class="panel" aria-labelledby="uploadH">
+      <h2 id="uploadH" class="step-h"><span class="badge">1</span> Upload & Build Rec</h2>
+
+      <div class="panel" style="margin-bottom:12px;">
+        <div class="controls">
+          <div class="field" style="min-width:260px">
+            <label for="accSelect">Account</label>
+            <div class="controls">
+              <select id="accSelect">
+                <option value="">-- Select account --</option>
+                {% for a in accounts %}
+                <option value="{{ a }}" {% if a==account %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn bad small" type="button" title="Delete account"
+                onclick="deleteAccount()">Delete</button>
+            </div>
+          </div>
+          <div class="field" style="min-width:260px">
+            <label for="accNew">Add new account</label>
+            <div style="display:flex;gap:10px">
+              <input id="accNew" type="text" placeholder="e.g. 100-123456" />
+              <button class="btn small" type="button" onclick="addAccount()">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <form id="uploadForm" class="grid cols-2" method="post" action="{{ url_for('build_rec') }}"
+        enctype="multipart/form-data">
+        <input type="hidden" name="account" id="accountHidden" value="{{ account|default('', true) }}" />
+        <div class="grid cols-3">
+          <div class="field">
+            <label for="at_file">AT File (.csv or .xlsx)</label>
+            <input id="at_file" type="file" name="at_file" accept=".csv,.xlsx" required />
+          </div>
+          <div class="field">
+            <label for="broker_file" id="brokerFileLabel">Broker File (.csv,.xlsx or .pdf)</label>
+            <!-- keep the same name the backend expects -->
+          <input id="broker_file" type="file" name="broker_file" accept=".csv" multiple webkitdirectory directory />
+          <div id="brokerHelp" class="note" style="margin-top:6px"></div>
+          </div>
+          <!-- Broker select -->
+          <div class="field" style="min-width:220px">
+            <label for="broker">Broker</label>
+            <select id="broker" name="broker">
+              <option value="Velocity" {{ 'selected' if (broker|default('Velocity'))=='Velocity' else '' }}>Velocity
+              </option>
+              <option value="Clear Street" {{ 'selected' if (broker|default('Velocity'))=='Clear Street' else '' }}>
+                Clear Street</option>
+              <option value="scb" {{ 'selected' if (broker|default('Velocity'))=='scb' else '' }}>SCB</option>
+              <option value="Riyadh Capital" {{ 'selected' if (broker|default('Velocity'))=='Riyadh Capital' else '' }}>
+                Riyadh Capital</option>
+               <option value="GTNA" {{ 'selected' if (broker|default('Velocity'))=='GTNA' else '' }}>GTNA</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Date Range (Settle Date)</label>
+            <div style="display:flex;gap:10px">
+              <input aria-label="Start date" type="date" name="start_date" required />
+              <input aria-label="End date" type="date" name="end_date" required />
+            </div>
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:8px">
+          <button class="btn primary" type="submit" title="Build the reconciliation view">Build Rec</button>
+          <div class="chip">Ensure the Broker file has a <b>Settle Date</b> column.</div>
+        </div>
+      </form>
+
+      {% if upload_error %}
+      <div class="note" style="margin-top:10px;color:var(--bad)">
+        <b>Upload error:</b> {{ upload_error }}
+      </div>
+      {% endif %}
+
+      <div class="note" style="margin-top:10px">
+        Broker rows are filtered by the <b>Settle Date</b> you select above (inclusive). Auto-match ignores dates; it
+        matches by Symbol/Exchange category + amount.
+      </div>
+    </section>
+    {% endif %}
+
+    {% if stage == 'review' %}
+    <section class="row" aria-labelledby="reconH">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <h2 id="reconH" class="step-h"><span class="badge">2</span> Unmatched Items</h2>
+            <div class="note">Select rows for manual pair or run Auto-match. Sort by clicking headers. Use filters to
+              narrow down.</div>
+            <div class="toolbar" style="margin-top:10px">
+              <div class="chip" title="Rows matched so far">Matched: <b>{{ stats.matched_rows }}</b></div>
+              <div class="chip" title="Total rows loaded">Total: <b>{{ stats.total_rows }}</b></div>
+              <div class="chip" title="Unique symbols">Symbols: <b>{{ stats.symbols|length }}</b></div>
+              <div id="selChip" class="chip" title="Rows currently selected">Selected: <b>0</b></div>
+              <div id="diffChip" class="chip" title="Sum of selected differences">Selected Δ: <b class="num">0.00</b>
+              </div>
+            </div>
+          </div>
+          <div class="toolbar">
+            <div class="field" style="min-width:140px">
+              <label for="tol">Tolerance</label>
+              <input id="tol" type="number" step="0.01" min="0" value="{{ '%.2f'|format(tol|default(0.01)) }}" />
+            </div>
+            <button class="btn ok" type="button" onclick="runAutoMatch()"
+              title="Try to auto-match by difference buckets">Run Auto-Match</button>
+            <button class="btn" onclick="manualPair()" title="Force selected rows into a manual match group">Manual
+              Pair</button>
+            <a class="btn ghost" href="{{ url_for('view_matched') }}" title="View matched list">View Matched</a>
+            <button class="btn" onclick="downloadReport()" title="Download matched summary">Download Report</button>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:12px">
+          <div class="panel" aria-labelledby="exportH">
+            <h3 id="exportH" class="card-title">Account, Carry-Forward, History & Export</h3>
+            <div class="controls">
+              <div class="field" style="min-width:260px">
+                <label for="accSelect2">Account</label>
+                <div class="controls">
+                  <select id="accSelect2">
+                    <option value="">-- Select account --</option>
+                    {% for a in accounts %}
+                    <option value="{{ a }}" {% if a==account %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn bad small" type="button" title="Delete account"
+                    onclick="deleteAccount()">Delete</button>
+                </div>
+              </div>
+              <div class="field" style="min-width:260px">
+                <label for="accNew2">Add new account</label>
+                <div style="display:flex;gap:10px">
+                  <input id="accNew2" type="text" placeholder="e.g. 100-123456" />
+                  <button class="btn small" type="button" onclick="addAccount2()">Add</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls" style="margin-top:8px">
+              <button class="btn ghost small" type="button" onclick="loadCarry()">Load Carry-Forward</button>
+              <button class="btn ghost small" type="button" onclick="saveCarry()">Save Carry-Forward</button>
+              <button class="btn small" type="button" onclick="openHistoryModal()"
+                title="Browse previously cleared (matched) rows">History (Cleared)</button>
+            </div>
+
+            <div class="controls" style="margin-top:8px">
+              <div class="field" style="min-width:320px">
+                <label for="prevRec">Import Previous Rec (.xlsx / .csv)</label>
+                <div class="controls">
+                  <input id="prevRec" type="file" accept=".xlsx,.csv" />
+                  <button class="btn small" type="button" onclick="importPrevRec()">Import</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls" style="margin-top:8px">
+              <div class="field" style="min-width:320px;flex:1">
+                <label for="manualTx">Manual Transactions (.csv / .xlsx)</label>
+                <div class="controls">
+                  <input id="manualTx" type="file" accept=".xlsx,.csv" />
+                  <button class="btn small" type="button" onclick="importManualTx()">Add</button>
+                </div>
+                <div class="note" style="margin-top:6px">
+                  Required headers: <b>Date, Symbol, Description, amount, side</b>. Side: <b>A</b>=AT, <b>B</b>=Broker.
+                  Amount is used as given.
+                </div>
+              </div>
+            </div>
+
+            <div class="controls" style="margin-top:8px">
+              <div class="field">
+                <label for="rdate">Recon Date</label>
+                <input id="rdate" type="date" value="{{ recon_date|default('', true) }}" />
+              </div>
+              <div class="field">
+                <label for="eb_at">Ending Balance AT</label>
+                <input id="eb_at" type="number" step="0.01"
+                  value="{{ ('%.2f'|format(eb_at)) if eb_at is not none else '' }}" />
+              </div>
+              <div class="field">
+                <label for="eb_brk">Ending Balance Broker</label>
+                <input id="eb_brk" type="number" step="0.01"
+                  value="{{ ('%.2f'|format(eb_brk)) if eb_brk is not none else '' }}" />
+              </div>
+            </div>
+            <div class="toolbar" style="margin-top:8px">
+              <div class="chip">EB Diff: <b id="ebDiff" class="num">0.00</b></div>
+              <div class="chip">Txn Total: <b id="txnTotal" class="num">0.00</b></div>
+              <div class="chip">Final Diff: <b id="finalDiff" class="num">0.00</b></div>
+            </div>
+            <div class="toolbar" style="margin-top:8px">
+              <button class="btn primary" onclick="downloadRecon()" title="Build and download Recon.xlsx">Download Recon
+                (.xlsx)</button>
+            </div>
+          </div>
+
+          <div class="panel" aria-labelledby="filtersH">
+            <h3 id="filtersH" class="card-title">Filters & Quick Actions</h3>
+            <div class="controls">
+              <div class="field" style="min-width:220px">
+                <label for="filterSymbol">Filter by Symbol</label>
+                <input id="filterSymbol" type="text" placeholder="e.g. AAPL" />
+              </div>
+              <div class="field" style="min-width:340px">
+                <label for="filterDesc">Filter by Description</label>
+                <input id="filterDesc" type="text" placeholder="Type to filter" />
+              </div>
+            </div>
+            <div class="toolbar" style="margin-top:8px">
+              <label class="btn small ghost" style="gap:10px;cursor:pointer" title="Toggle select all visible rows">
+                <input id="selectAll" type="checkbox" onchange="toggleSelectAll(this)" />
+                <span>Select All (visible)</span>
+              </label>
+              <button class="btn small" onclick="clearFilters()" title="Clear symbol & description filters">Clear
+                Filters</button>
+              <a class="btn small ghost" href="{{ url_for('view_matched') }}">View Matched</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap" role="region" aria-label="Unmatched table">
+          <table id="umTable">
+            <thead>
+              <tr>
+                <th style="width:46px" scope="col"></th>
+                <th scope="col" data-sort="2">Date</th>
+                <th scope="col" data-sort="3">Symbol</th>
+                <th scope="col" data-sort="4">Description</th>
+                <th scope="col" class="num" data-sort="5">AT</th>
+                <th scope="col" class="num" data-sort="6">Broker</th>
+                <th scope="col" class="num" data-sort="7">Difference</th>
+                <th scope="col">Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if um|length == 0 %}
+              <tr>
+                <td colspan="8" class="note" style="padding:16px">No unmatched rows. Try changing filters or view
+                  Matched.</td>
+              </tr>
+              {% endif %}
+              {% for r in um %}
+              {% set atv = r['AT'] if r['AT'] is not none else 0 %}
+              {% set brv = r['Broker'] if r['Broker'] is not none else 0 %}
+              <tr data-rowid="{{ r['RowID'] }}">
+                <td><input type="checkbox" class="pick" aria-label="Select row" onchange="updateSelection()" /></td>
+                <td>{{ r['DateKey'] }}</td>
+                <td class="cell-symbol editable" title="Double-click to edit Symbol">{{ r['Symbol'] }}</td>
+                <td class="cell-desc">{{ r['Description'] }}</td>
+                <td class="money">{{ '' if atv|float == 0.0 else ('%.2f'|format(atv)) }}</td>
+                <td class="money">{{ '' if brv|float == 0.0 else ('%.2f'|format(brv)) }}</td>
+                <td class="money {{ 'neg' if r['Difference']<0 else 'pos' if r['Difference']>0 else '' }}">
+                  {{ '%.2f'|format(r['Difference']) }}
+                </td>
+                <td class="comment-cell" title="Double-click to edit comment">{{ r['Comments'] or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Floating dock for Unmatched -->
+    <div id="dockUM" class="float-dock">
+      <div class="chip" id="dockSel">Selected: <b>0</b></div>
+      <div class="chip" id="dockDelta">Δ: <b>0.00</b></div>
+      <button class="btn ok small" type="button" onclick="runAutoMatch()">Auto-match</button>
+      <button class="btn small" onclick="manualPair()">Manual Pair</button>
+    </div>
+    {% endif %}
+
+    {% if stage == 'matched' %}
+    <section class="row" aria-labelledby="matchedH">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <h2 id="matchedH" class="step-h"><span class="badge">3</span> Matched Items</h2>
+            <div class="note">Select rows to recall back to Recon. Use filters to narrow down.</div>
+            <div class="toolbar" style="margin-top:10px">
+              <div id="selChipM" class="chip">Selected: <b>0</b></div>
+              <div id="diffChipM" class="chip">Selected Δ: <b class="num">0.00</b></div>
+            </div>
+          </div>
+          <div class="toolbar">
+            <a class="btn ghost" href="{{ url_for('recon') }}">View Recon</a>
+            <button class="btn warn" onclick="recallSelected()">Recall Selected</button>
+            <div class="field" style="min-width:140px">
+              <label for="tolM">Tolerance</label>
+              <input id="tolM" type="number" step="0.01" min="0" value="{{ '%.2f'|format(tol|default(0.01)) }}" />
+            </div>
+          </div>
+        </div>
+        <div class="panel" aria-labelledby="filtersMH">
+          <h3 id="filtersMH" class="card-title">Filters & Quick Actions</h3>
+          <div class="controls">
+            <div class="field" style="min-width:220px">
+              <label for="filterSymbolM">Filter by Symbol</label>
+              <input id="filterSymbolM" type="text" placeholder="e.g. AAPL" />
+            </div>
+            <div class="field" style="min-width:320px">
+              <label for="filterDescM">Filter by Description</label>
+              <input id="filterDescM" type="text" placeholder="Type to filter" />
+            </div>
+            <div class="field" style="min-width:220px">
+              <label for="filterMatchIDM">Filter by Match ID</label>
+              <input id="filterMatchIDM" type="text" placeholder="MATCH #..." />
+            </div>
+          </div>
+          <div class="toolbar" style="margin-top:8px">
+            <label class="btn small ghost" style="gap:10px;cursor:pointer" title="Toggle select all visible rows">
+              <input id="selectAllMatched" type="checkbox" onchange="toggleSelectAllMatched(this)" />
+              <span>Select All (visible)</span>
+            </label>
+            <button class="btn small" onclick="clearFiltersM()" title="Clear filters">Clear Filters</button>
+          </div>
+        </div>
+
+        <div class="table-wrap" role="region" aria-label="Matched table">
+          <table id="mTable">
+            <thead>
+              <tr>
+                <th style="width:46px"></th>
+                <th data-sort="2">RowID</th>
+                <th data-sort="3">MatchID</th>
+                <th data-sort="4">Date</th>
+                <th data-sort="5">Symbol</th>
+                <th data-sort="6">Description</th>
+                <th class="num" data-sort="7">AT</th>
+                <th class="num" data-sort="8">Broker</th>
+                <th class="num" data-sort="9">Difference</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody id="mBody">
+              {% if matched|length == 0 %}
+              <tr>
+                <td colspan="10" class="note" style="padding:16px">No matched rows yet.</td>
+              </tr>
+              {% endif %}
+              {% for r in matched %}
+              {% set atv = r['AT'] if r['AT'] is not none else 0 %}
+              {% set brv = r['Broker'] if r['Broker'] is not none else 0 %}
+              <tr data-rowid="{{ r['RowID'] }}">
+                <td><input type="checkbox" class="mpick" aria-label="Select matched row"
+                    onchange="updateSelectionM()" /></td>
+                <td>{{ r['RowID'] }}</td>
+                <td class="m-cell-match">{{ r['MatchID'] }}</td>
+                <td>{{ r['DateKey'] }}</td>
+                <td class="m-cell-symbol editable" title="Double-click to edit Symbol">{{ r['Symbol'] }}</td>
+                <td class="m-cell-desc">{{ r['Description'] }}</td>
+                <td class="money">{{ '' if atv|float == 0.0 else ('%.2f'|format(atv)) }}</td>
+                <td class="money">{{ '' if brv|float == 0.0 else ('%.2f'|format(brv)) }}</td>
+                <td class="money {{ 'neg' if r['Difference']<0 else 'pos' if r['Difference']>0 else '' }}">
+                  {{ '%.2f'|format(r['Difference']) }}
+                </td>
+                <td class="comment-cell" title="Double-click to edit comment">{{ r['Comments'] or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Floating dock for Matched -->
+    <div id="dockM" class="float-dock">
+      <div class="chip">Selected: <b id="dockSelM">0</b></div>
+      <div class="chip">Δ: <b id="dockDeltaM">0.00</b></div>
+      <button class="btn warn small" onclick="recallSelected()">Recall Selected</button>
+      <a class="btn small" href="{{ url_for('recon') }}">Back to Recon</a>
+    </div>
+    {% endif %}
+
+    <div class="footer" role="contentinfo">
+      <div>Developed by <b>Anupa Wimalasiri</b></div>
+      <div class="right note">Broker rows filtered by user-selected <b>Settle Date</b>. Auto-match ignores dates and
+        uses Symbol/Exchange category + amount.</div>
+    </div>
+  </div>
+
+  <!-- Cleared History Modal -->
+  <div id="histModal" class="modal hidden" aria-modal="true" role="dialog">
+    <div class="box">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <h3 style="margin:0">Cleared History</h3>
+        <div class="toolbar">
+          <div id="histSelChip" class="chip">Selected: <b>0</b></div>
+          <div id="histDiffChip" class="chip">Selected Δ: <b class="num">0.00</b></div>
+          <button class="btn small" onclick="recallHistorySelected()">Recall Selected</button>
+          <button class="btn ghost small" onclick="closeHistoryModal()">Close</button>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:10px">
+        <div class="controls">
+          <div class="field">
+            <label for="histFrom">From</label>
+            <input id="histFrom" type="date">
+          </div>
+          <div class="field">
+            <label for="histTo">To</label>
+            <input id="histTo" type="date">
+          </div>
+          <div class="field" style="min-width:180px">
+            <label for="histSym">Symbol</label>
+            <input id="histSym" type="text" placeholder="Symbol">
+          </div>
+          <div class="field" style="min-width:240px">
+            <label for="histMatch">Match ID</label>
+            <input id="histMatch" type="text" placeholder="MATCH #...">
+          </div>
+          <div class="field" style="min-width:260px;flex:1">
+            <label for="histText">Text Search</label>
+            <input id="histText" type="text" placeholder="Description / comments">
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:8px">
+          <label class="btn small ghost" style="gap:10px;cursor:pointer" title="Toggle select all visible rows">
+            <input id="histSelectAll" type="checkbox" onchange="toggleHistorySelectAll(this)" />
+            <span>Select All (visible)</span>
+          </label>
+          <button class="btn small" onclick="clearHistoryFilters()">Clear Filters</button>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="max-height:60vh">
+        <table id="histTable">
+          <thead>
+            <tr>
+              <th style="width:46px"></th>
+              <th>Date</th>
+              <th>Symbol</th>
+              <th>Description</th>
+              <th class="num">AT</th>
+              <th class="num">Broker</th>
+              <th class="num">Difference</th>
+              <th>MatchID</th>
+              <th>Comments</th>
+              <th>SavedAt</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    async function safeJson(res) {
+      const t = await res.text();
+      try { return JSON.parse(t) } catch { return { ok: false, error: t || 'Server error' } }
+    }
+    // (optional) make sure they're global
+    window.esc = esc;
+
+    (function () { function setOffsets() { const h = document.getElementById('appHeader')?.offsetHeight || 76; document.documentElement.style.setProperty('--header-h', h + 'px') } window.addEventListener('load', setOffsets); window.addEventListener('resize', setOffsets); setOffsets(); })();
+
+    function toast(msg) { const box = document.getElementById('toast'); if (!box) { console.log(msg); return } const el = document.createElement('div'); el.className = 'toast-item'; el.textContent = msg; box.appendChild(el); setTimeout(() => { el.style.opacity = '0' }, 2600); setTimeout(() => { box.removeChild(el) }, 3000) }
+
+    async function resetSession() { try { await fetch('{{ url_for("reset_session") }}', { method: 'POST' }); window.location = '{{ url_for("index") }}' } catch (e) { toast('Reset failed') } }
+
+    // ---------- Account wiring ----------
+    const accSel1 = document.getElementById('accSelect');
+    const accNew1 = document.getElementById('accNew');
+    const accSel2 = document.getElementById('accSelect2');
+    const accNew2 = document.getElementById('accNew2');
+    const hiddenAcc = document.getElementById('accountHidden');
+
+    function setAccountValue(val) { if (hiddenAcc) hiddenAcc.value = val || ''; if (accSel1) accSel1.value = val || ''; if (accSel2) accSel2.value = val || ''; saveMetaDebounced() }
+    if (accSel1) accSel1.addEventListener('change', () => setAccountValue(accSel1.value));
+    if (accSel2) accSel2.addEventListener('change', () => setAccountValue(accSel2.value));
+
+    async function addAccount() { const v = (accNew1?.value || '').trim(); if (!v) { toast('Enter an account'); return } await addAccountCommon(v); accNew1.value = '' }
+    async function addAccount2() { const v = (accNew2?.value || '').trim(); if (!v) { toast('Enter an account'); return } await addAccountCommon(v); accNew2.value = '' }
+    async function addAccountCommon(v) {
+      try {
+        const r = await fetch('{{ url_for("accounts_add") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ account: v }) });
+        const j = await r.json(); if (!r.ok || !j.ok) { toast(j.error || 'Add failed'); return }
+        const opts = (j.accounts || []).map(a => `<option value="${a}" ${a === j.selected ? 'selected' : ''}>${a}</option>`).join('');
+        if (accSel1) accSel1.innerHTML = `<option value="">-- Select account --</option>${opts}`;
+        if (accSel2) accSel2.innerHTML = `<option value="">-- Select account --</option>${opts}`;
+        setAccountValue(j.selected || v); toast('Account added')
+      } catch (e) { toast('Add account failed') }
+    }
+    async function deleteAccount() {
+      const acc = (accSel1?.value || accSel2?.value || '').trim(); if (!acc) { toast('Choose an account'); return }
+      if (!confirm(`Delete account "${acc}"? This removes its saved data folder.`)) return;
+      try {
+        const r = await fetch('{{ url_for("accounts_delete") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ account: acc }) });
+        const j = await r.json(); if (!r.ok || !j.ok) { toast(j.error || 'Delete failed'); return }
+        const opts = (j.accounts || []).map(a => `<option value="${a}" ${a === j.selected ? 'selected' : ''}>${a}</option>`).join('');
+        if (accSel1) accSel1.innerHTML = `<option value="">-- Select account --</option>${opts}`;
+        if (accSel2) accSel2.innerHTML = `<option value="">-- Select account --</option>${opts}`;
+        setAccountValue(j.selected || ''); toast('Account deleted');
+      } catch (e) { toast('Delete account failed') }
+    }
+
+    // ---------- Meta save ----------
+    const rdateEl = document.getElementById('rdate');
+    const ebAtEl = document.getElementById('eb_at');
+    const ebBrkEl = document.getElementById('eb_brk');
+    const tolEl = document.getElementById('tol') || document.getElementById('tolM');
+
+    function debounce(fn, ms = 350) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms) } }
+    const saveMetaDebounced = debounce(async () => {
+      const payload = {
+        account: (accSel1?.value || accSel2?.value || ''),
+        recon_date: rdateEl ? rdateEl.value : undefined,
+        eb_at: ebAtEl ? ebAtEl.value : undefined,
+        eb_brk: ebBrkEl ? ebBrkEl.value : undefined,
+        tol: tolEl ? tolEl.value : undefined,
+        broker: document.getElementById('broker')?.value
+      };
+      try { await fetch('{{ url_for("save_meta") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) }) } catch (e) { }
+      computeReconTotals();
+    }, 400);
+
+    [accSel1, accSel2, rdateEl, ebAtEl, ebBrkEl, tolEl].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', saveMetaDebounced);
+      el.addEventListener('change', saveMetaDebounced);
+      el.addEventListener('blur', saveMetaDebounced);
+    });
+
+    // ---------- Common helpers ----------
+    const umTable = document.getElementById('umTable');
+    const selChip = document.getElementById('selChip');
+    const diffChip = document.getElementById('diffChip');
+    const ebDiffEl = document.getElementById('ebDiff');
+    const txnTotalEl = document.getElementById('txnTotal');
+    const finalDiffEl = document.getElementById('finalDiff');
+    const filterSymbolEl = document.getElementById('filterSymbol');
+    const filterDescEl = document.getElementById('filterDesc');
+
+    function fmtMoney(v) { const n = Number(v); if (!isFinite(n) || Math.abs(n) < 1e-9) return ''; return n.toFixed(2) }
+    function writeDock() {
+      const dockSel = document.querySelector('#dockSel b'); const dockDelta = document.querySelector('#dockDelta b');
+      if (dockSel && selChip) dockSel.textContent = selChip.querySelector('b').textContent || '0';
+      if (dockDelta && diffChip) dockDelta.textContent = diffChip.querySelector('b').textContent || '0.00';
+    }
+
+    function getSelectedRowIDs() {
+      if (!umTable) return [];
+      const ids = []; umTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.pick'); if (cb && cb.checked) { ids.push(parseInt(tr.dataset.rowid, 10)) }
+      }); return ids;
+    }
+    function sumSelectedDifference() {
+      if (!umTable) return 0;
+      let s = 0; umTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.pick'); if (cb && cb.checked) {
+          const diffCell = tr.querySelector('td:nth-child(7)');
+          const v = parseFloat((diffCell?.textContent || '0').replace(/,/g, '')); if (!isNaN(v)) s += v;
+        }
+      }); return Math.round(s * 100) / 100;
+    }
+    function updateSelection() {
+      if (selChip && diffChip) {
+        selChip.querySelector('b').textContent = getSelectedRowIDs().length;
+        const sd = sumSelectedDifference(); diffChip.querySelector('b').textContent = sd.toFixed(2);
+        const tol = parseFloat(document.getElementById('tol')?.value || '0.01');
+        if (Math.abs(sd) <= tol) { diffChip.classList.add('ok'); diffChip.classList.remove('bad') }
+        else { diffChip.classList.add('bad'); diffChip.classList.remove('ok') }
+      }
+      computeReconTotals(); writeDock();
+    }
+    function toggleSelectAll(box) {
+      if (!umTable) return;
+      umTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.pick'); if (cb) cb.checked = box.checked;
+      }); updateSelection();
+    }
+
+    // ---------- Matched helpers ----------
+    const mTable = document.getElementById('mTable');
+    const filterSymbolMEl = document.getElementById('filterSymbolM');
+    const filterDescMEl = document.getElementById('filterDescM');
+    const filterMatchIDMEl = document.getElementById('filterMatchIDM');
+    const selChipM = document.getElementById('selChipM');
+    const diffChipM = document.getElementById('diffChipM');
+
+    function getSelectedMatchedIDs() {
+      if (!mTable) return [];
+      const ids = []; mTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.mpick'); if (cb && cb.checked) { ids.push(parseInt(tr.dataset.rowid, 10)) }
+      }); return ids;
+    }
+    function sumSelectedDifferenceM() {
+      if (!mTable) return 0; let s = 0;
+      mTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.mpick'); if (cb && cb.checked) {
+          const cell = tr.querySelector('td:nth-child(9)');
+          const v = parseFloat((cell?.textContent || '0').replace(/,/g, '')); if (!isNaN(v)) s += v;
+        }
+      }); return Math.round(s * 100) / 100;
+    }
+    function updateSelectionM() {
+      if (selChipM && diffChipM) {
+        const ct = getSelectedMatchedIDs().length; const dv = sumSelectedDifferenceM();
+        selChipM.querySelector('b').textContent = ct; diffChipM.querySelector('b').textContent = dv.toFixed(2);
+        const tol = parseFloat(document.getElementById('tolM')?.value || '0.01');
+        if (Math.abs(dv) <= tol) { diffChipM.classList.add('ok'); diffChipM.classList.remove('bad') }
+        else { diffChipM.classList.add('bad'); diffChipM.classList.remove('ok') }
+      }
+      const ds = document.getElementById('dockSelM'); const dd = document.getElementById('dockDeltaM');
+      if (ds) ds.textContent = selChipM?.querySelector('b').textContent || '0';
+      if (dd) dd.textContent = diffChipM?.querySelector('b').textContent || '0.00';
+    }
+    function toggleSelectAllMatched(box) {
+      if (!mTable) return;
+      mTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.classList.contains('hidden')) return;
+        const cb = tr.querySelector('.mpick'); if (cb) cb.checked = box.checked;
+      }); updateSelectionM();
+    }
+
+    // Sort tables
+    function sortTable(table, col) {
+      const thead = table.querySelector('thead'); const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr:not(.hidden):not([data-empty])'));
+      const isNum = table.querySelector(`th:nth-child(${col})`).classList.contains('num');
+      const dir = thead.querySelector('.sort-asc') === table.querySelector(`th:nth-child(${col})`) ? -1 : 1;
+      rows.sort((a, b) => {
+        let va = a.querySelector(`td:nth-child(${col})`).textContent.trim();
+        let vb = b.querySelector(`td:nth-child(${col})`).textContent.trim();
+        if (isNum) { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; return dir * (va - vb) }
+        else { return dir * va.localeCompare(vb) }
+      });
+      thead.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+      table.querySelector(`th:nth-child(${col})`).classList.add(dir === 1 ? 'sort-asc' : 'sort-desc');
+      tbody.append(...rows);
+    }
+    if (umTable) {
+      umTable.querySelector('thead tr').addEventListener('click', (e) => { const th = e.target.closest('th[data-sort]'); if (th) sortTable(umTable, parseInt(th.dataset.sort, 10)) });
+    }
+    if (mTable) {
+      mTable.querySelector('thead tr').addEventListener('click', (e) => { const th = e.target.closest('th[data-sort]'); if (th) sortTable(mTable, parseInt(th.dataset.sort, 10)) });
+    }
+
+    // Inline comments (Unmatched + Matched)
+    if (umTable) {
+      umTable.addEventListener('dblclick', e => {
+        const cell = e.target.closest('.comment-cell'); if (!cell) return;
+        const tr = cell.closest('tr'); const rowid = tr?.dataset?.rowid; const curr = cell.textContent.trim();
+        cell.innerHTML = `<input class="inline-edit" value="${curr.replace(/"/g, '&quot;')}" />`;
+        const input = cell.querySelector('input'); input.focus();
+        input.addEventListener('blur', () => saveComment(cell, rowid));
+        input.addEventListener('keydown', ke => { if (ke.key === 'Enter') { input.blur() } })
+      });
+    }
+    if (mTable) {
+      mTable.addEventListener('dblclick', e => {
+        const cell = e.target.closest('.comment-cell'); if (!cell) return;
+        const tr = cell.closest('tr'); const rowid = tr?.dataset?.rowid; const curr = cell.textContent.trim();
+        cell.innerHTML = `<input class="inline-edit" value="${curr.replace(/"/g, '&quot;')}" />`;
+        const input = cell.querySelector('input'); input.focus();
+        input.addEventListener('blur', () => saveComment(cell, rowid));
+        input.addEventListener('keydown', ke => { if (ke.key === 'Enter') { input.blur() } })
+      });
+    }
+    async function saveComment(cell, rowid) {
+      const val = cell.querySelector('input')?.value || '';
+      try {
+        const r = await fetch('{{ url_for("update_comment") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ rowid, text: val }) });
+        await r.json(); cell.textContent = val; toast('Comment saved');
+      } catch { cell.textContent = val; toast('Comment saved (offline)') }
+    }
+
+    // Inline SYMBOL edit (Unmatched + Matched)
+    function makeSymbolEditable(container, cellSelector) {
+      if (!container) return;
+      container.addEventListener('dblclick', async (e) => {
+        const cell = e.target.closest(cellSelector); if (!cell) return;
+        const tr = cell.closest('tr'); const rowid = tr?.dataset?.rowid;
+        const curr = cell.textContent.trim();
+        cell.innerHTML = `<input class="inline-edit" value="${curr.replace(/"/g, '&quot;')}" />`;
+        const input = cell.querySelector('input'); input.focus(); input.select();
+        async function commit() {
+          const val = input.value.trim().toUpperCase();
+          try {
+            const r = await fetch('{{ url_for("update_symbol") }}', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({ rowid: rowid, symbol: val })
+            });
+            const j = await r.json();
+            if (!r.ok || !j.ok) { toast(j.error || 'Update failed'); cell.textContent = curr; return }
+            cell.textContent = val; toast('Symbol updated');
+          } catch (e) { cell.textContent = curr; toast('Update failed') }
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ke) => { if (ke.key === 'Enter') { input.blur(); } else if (ke.key === 'Escape') { cell.textContent = curr; } });
+      });
+    }
+    makeSymbolEditable(umTable, '.cell-symbol.editable');
+    makeSymbolEditable(mTable, '.m-cell-symbol.editable');
+
+    // Filters
+    function applyFilters() {
+      if (!umTable) return;
+      const s = (filterSymbolEl?.value || '').trim().toLowerCase();
+      const d = (filterDescEl?.value || '').trim().toLowerCase();
+      let visibleCount = 0;
+      umTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.querySelector('.note')) return;
+        const sym = tr.querySelector('.cell-symbol')?.textContent.toLowerCase() || '';
+        const desc = tr.querySelector('.cell-desc')?.textContent.toLowerCase() || '';
+        const pass = (!s || sym.includes(s)) && (!d || desc.includes(d));
+        tr.classList.toggle('hidden', !pass); if (pass) visibleCount++;
+      });
+      const existingEmpty = umTable.querySelector('tbody tr[data-empty="1"]');
+      if (visibleCount === 0) {
+        if (!existingEmpty) {
+          const tr = document.createElement('tr'); tr.setAttribute('data-empty', '1'); tr.innerHTML = `<td colspan="8" class="note" style="padding:16px">No rows match your filter.</td>`;
+          umTable.querySelector('tbody').appendChild(tr)
+        }
+      } else if (existingEmpty) { existingEmpty.remove() }
+      updateSelection();
+    }
+    const debouncedFilter = debounce(applyFilters, 160);
+    if (filterSymbolEl) filterSymbolEl.addEventListener('input', debouncedFilter);
+    if (filterDescEl) filterDescEl.addEventListener('input', debouncedFilter);
+    function clearFilters() {
+      if (filterSymbolEl) filterSymbolEl.value = ''; if (filterDescEl) filterDescEl.value = '';
+      const box = document.getElementById('selectAll'); if (box) box.checked = false; applyFilters(); toast('Filters cleared');
+    }
+
+
+    function applyFiltersM() {
+      if (!mTable) return;
+      const s = (filterSymbolMEl?.value || '').trim().toLowerCase();
+      const d = (filterDescMEl?.value || '').trim().toLowerCase();
+      const m = (filterMatchIDMEl?.value || '').trim().toLowerCase();
+      let visibleCount = 0;
+      mTable.querySelectorAll('tbody tr').forEach(tr => {
+        if (tr.querySelector('.note')) return;
+        const sym = tr.querySelector('.m-cell-symbol')?.textContent.toLowerCase() || '';
+        const desc = tr.querySelector('.m-cell-desc')?.textContent.toLowerCase() || '';
+        const mid = tr.querySelector('.m-cell-match')?.textContent.toLowerCase() || '';
+        const pass = (!s || sym.includes(s)) && (!d || desc.includes(d)) && (!m || mid.includes(m));
+        tr.classList.toggle('hidden', !pass); if (pass) visibleCount++;
+      });
+      const existingEmpty = mTable.querySelector('tbody tr[data-empty="1"]');
+      if (visibleCount === 0) {
+        if (!existingEmpty) {
+          const tr = document.createElement('tr'); tr.setAttribute('data-empty', '1'); tr.innerHTML = `<td colspan="10" class="note" style="padding:16px">No rows match your filter.</td>`;
+          mTable.querySelector('tbody').appendChild(tr)
+        }
+      } else if (existingEmpty) { existingEmpty.remove() }
+      updateSelectionM();
+    }
+    const debouncedFilterM = debounce(applyFiltersM, 150);
+    if (filterSymbolMEl) filterSymbolMEl.addEventListener('input', debouncedFilterM);
+    if (filterDescMEl) filterDescMEl.addEventListener('input', debouncedFilterM);
+    if (filterMatchIDMEl) filterMatchIDMEl.addEventListener('input', debouncedFilterM);
+    function clearFiltersM() {
+      if (filterSymbolMEl) filterSymbolMEl.value = ''; if (filterDescMEl) filterDescMEl.value = ''; if (filterMatchIDMEl) filterMatchIDMEl.value = '';
+      applyFiltersM(); toast('Filters cleared')
+    }
+
+    // Totals
+    function computeReconTotals() {
+      if (!txnTotalEl || !ebDiffEl || !finalDiffEl) return;
+      let txn = 0;
+      if (umTable) {
+        umTable.querySelectorAll('tbody tr').forEach(tr => {
+          const cell = tr.querySelector('td:nth-child(7)');
+          if (!cell) return;
+          const v = parseFloat((cell.textContent || '0').replace(/,/g, ''));
+          if (!isNaN(v)) txn += v;
+        });
+      }
+      const eb_at = parseFloat(ebAtEl?.value || '0') || 0;
+      const eb_brk = parseFloat(ebBrkEl?.value || '0') || 0;
+      const ebDiff = +(eb_brk - eb_at).toFixed(2);
+      const final = +(txn - ebDiff).toFixed(2);
+      txnTotalEl.textContent = (Math.round(txn * 100) / 100).toFixed(2);
+      ebDiffEl.textContent = ebDiff.toFixed(2);
+      finalDiffEl.textContent = final.toFixed(2);
+    }
+    computeReconTotals();
+
+    // Actions
+    async function manualPair() {
+      const ids = getSelectedRowIDs(); if (ids.length === 0) { toast('Select at least one row'); return }
+      const res = await fetch('{{ url_for("manual_pair") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ rowids: ids }) });
+      if (!res.ok) { const t = await res.text(); toast('Pairing failed: ' + t); return }
+      const j = await res.json(); rebuildUnmatchedTable(j.um || []); document.getElementById('selChip').querySelector('b').textContent = 0;
+      document.getElementById('diffChip').querySelector('b').textContent = '0.00'; writeDock(); toast('Manual match complete')
+    }
+    async function runAutoMatch() {
+      try {
+        const tolEl = document.getElementById('tol') || document.getElementById('tolM');
+        const tol = tolEl ? (parseFloat(tolEl.value) || 0.01) : 0.01;
+
+        const res = await fetch('{{ url_for("run_automatch") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ tol })
+        });
+
+        const j = await safeJson(res);
+        if (!res.ok || !j.ok) { toast(j.error || 'Auto-match failed'); return }
+
+        rebuildUnmatchedTable(j.um || []);
+        toast(`Auto-match complete — ${j.stats?.matched_rows ?? 0} matched`);
+      } catch (err) { toast('Auto-match failed: ' + (err?.message || err)) }
+    }
+
+    function rebuildUnmatchedTable(rows) {
+      const tb = umTable?.querySelector('tbody'); if (!tb) return; tb.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-empty', '1');
+        tr.innerHTML = `<td colspan="8" class="note" style="padding:16px">No unmatched rows.</td>`;
+        tb.appendChild(tr);
+      } else {
+        for (const r of rows) {
+          const tr = document.createElement('tr'); tr.dataset.rowid = r.RowID;
+          const at = Number(r.AT) || 0; const br = Number(r.Broker) || 0; const diff = Number((br - at).toFixed(2));
+          tr.innerHTML = `
+        <td><input type="checkbox" class="pick" aria-label="Select row" onchange="updateSelection()" /></td>
+        <td>${esc(r.DateKey || '')}</td>
+        <td class="cell-symbol editable" title="Double-click to edit Symbol">${esc(r.Symbol || '')}</td>
+        <td class="cell-desc">${esc(r.Description || '')}</td>
+        <td class="money">${at ? at.toFixed(2) : ''}</td>
+        <td class="money">${br ? br.toFixed(2) : ''}</td>
+        <td class="money ${(diff < 0) ? 'neg' : (diff > 0) ? 'pos' : ''}">${diff.toFixed(2)}</td>
+        <td class="comment-cell" title="Double-click to edit comment">${esc(r.Comments || '')}</td>`;
+          tb.appendChild(tr);
+        }
+      }
+      applyFilters(); computeReconTotals();
+    }
+
+    // Matched recall
+    async function recallSelected() {
+      const ids = getSelectedMatchedIDs(); if (ids.length === 0) { toast('Select rows to recall'); return }
+      const r = await fetch('{{ url_for("recall_matched") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ rowids: ids }) });
+      if (!r.ok) { const t = await r.text(); toast('Recall failed: ' + t); return }
+      const j = await r.json(); if (j.matched) rebuildMatchedTable(j.matched || []); toast('Rows recalled')
+    }
+    function rebuildMatchedTable(rows) {
+      const body = document.getElementById('mBody'); if (!body) return; body.innerHTML = '';
+      if (!rows || rows.length === 0) { const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="10" class="note" style="padding:16px">No matched rows.</td>`; body.appendChild(tr); return }
+      for (const r of rows) {
+        const at = Number(r.AT) || 0; const br = Number(r.Broker) || 0; const diff = Number((br - at).toFixed(2));
+        const tr = document.createElement('tr'); tr.dataset.rowid = r.RowID;
+        tr.innerHTML = `
+      <td><input type="checkbox" class="mpick" aria-label="Select matched row" onchange="updateSelectionM()" /></td>
+      <td class="num">${r.RowID}</td>
+      <td class="m-cell-match">${r.MatchID || ''}</td>
+      <td>${r.DateKey || ''}</td>
+      <td class="m-cell-symbol editable" title="Double-click to edit Symbol">${r.Symbol || ''}</td>
+      <td class="m-cell-desc">${r.Description || ''}</td>
+      <td class="money num">${at ? at.toFixed(2) : ''}</td>
+      <td class="money num">${br ? br.toFixed(2) : ''}</td>
+      <td class="money num ${(diff < 0) ? 'neg' : (diff > 0) ? 'pos' : ''}">${diff.toFixed(2)}</td>
+      <td class="comment-cell" title="Double-click to edit comment">${r.Comments || ''}</td>`;
+        body.appendChild(tr);
+      }
+      applyFiltersM();
+    }
+
+    // Reports/Recon
+    async function downloadReport() {
+      const r = await fetch('{{ url_for("download_report") }}');
+      if (!r.ok) { toast('Failed to build report'); return }
+      const blob = await r.blob();
+      saveBlob(blob, 'matched_report.xlsx');
+      toast('Report ready')
+    }
+
+    // Use FormData (server reads request.form/args)
+    async function downloadRecon() {
+      const fd = new FormData();
+      const broker = document.getElementById('broker')?.value || '';
+      const account = (document.getElementById('accSelect')?.value ||
+        document.getElementById('accSelect2')?.value || '').trim();
+      const date = document.getElementById('rdate')?.value || '';
+
+      if (broker) fd.append('broker', broker);
+      if (account) fd.append('account', account);
+      if (date) fd.append('date', date);
+
+      const res = await fetch('{{ url_for("download_recon") }}', { method: 'POST', body: fd });
+
+      if (!res.ok) {
+        const t = await res.text();
+        toast('Recon build failed: ' + t);
+        return;
+      }
+      const blob = await res.blob();
+
+      // filename from Content-Disposition
+      let filename = 'Recon.xlsx';
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename\*?=(?:UTF-8''|)([^;]+)/i);
+      if (m) filename = decodeURIComponent(m[1].trim().replace(/^"|"$/g, ''));
+
+      saveBlob(blob, filename);
+      toast('Recon exported');
+    }
+
+    function saveBlob(blob, filename) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 800)
+    }
+
+    // ---------- History (Cleared) ----------
+    let histRows = [];
+    const histModal = document.getElementById('histModal'); const histTBody = histModal.querySelector('tbody');
+    const histFrom = document.getElementById('histFrom'); const histTo = document.getElementById('histTo');
+    const histSym = document.getElementById('histSym'); const histMatch = document.getElementById('histMatch'); const histText = document.getElementById('histText');
+    const histSelChip = document.getElementById('histSelChip'); const histDiffChip = document.getElementById('histDiffChip');
+
+    function openHistoryModal() {
+      histModal.classList.remove('hidden');
+      [histFrom, histTo, histSym, histMatch, histText].forEach(el => { if (el) el.value = '' });
+      loadHistory();
+    }
+
+    function closeHistoryModal() { histModal.classList.add('hidden') }
+    async function loadHistory() {
+      try {
+        const r = await fetch('{{ url_for("history_list") }}'); const j = await r.json();
+        if (!r.ok || !j.ok) { toast('History load failed'); return }
+        histRows = j.rows || []; renderHistoryTable(histRows);
+      } catch (e) { toast('History load failed') }
+    }
+    function renderHistoryTable(rows) {
+      histTBody.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="10" class="note" style="padding:16px">No history found.</td>`;
+        histTBody.appendChild(tr); return
+      }
+      for (const r of rows) {
+        const at = Number(r.AT) || 0; const br = Number(r.Broker) || 0; const diff = (br - at).toFixed(2);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td><input type="checkbox" class="hpick" onchange="updateHistorySelection()"/></td>
+      <td>${r.Date || ''}</td>
+      <td>${r.Symbol || ''}</td>
+      <td>${r.Description || ''}</td>
+      <td class="money">${at ? Number(at).toFixed(2) : ''}</td>
+      <td class="money">${br ? Number(br).toFixed(2) : ''}</td>
+      <td class="money">${diff}</td>
+      <td>${r.MatchID || ''}</td>
+      <td>${r.Comments || ''}</td>
+      <td>${r.SavedAt || ''}</td>`;
+        tr.dataset.row = encodeURIComponent(JSON.stringify(r));
+        histTBody.appendChild(tr);
+      }
+      updateHistorySelection();
+    }
+    function filterHistory() {
+      const f = histFrom.value ? new Date(histFrom.value) : null;
+      const t = histTo.value ? new Date(histTo.value) : null;
+      const sym = (histSym.value || '').trim().toLowerCase();
+      const mid = (histMatch.value || '').trim().toLowerCase();
+      const txt = (histText.value || '').trim().toLowerCase();
+      const rows = (histRows || []).filter(r => {
+        const d = r.Date ? new Date(r.Date) : null;
+        if (f && (!d || d < f)) return false;
+        if (t && (!d || d > t)) return false;
+        if (sym && !(r.Symbol || '').toLowerCase().includes(sym)) return false;
+        if (mid && !(r.MatchID || '').toLowerCase().includes(mid)) return false;
+        const hay = (r.Description || '') + ' ' + (r.Comments || '');
+        if (txt && !hay.toLowerCase().includes(txt)) return false;
+        return true;
+      });
+      renderHistoryTable(rows);
+    }
+    [histFrom, histTo, histSym, histMatch, histText].forEach(el => el?.addEventListener('input', debounce(filterHistory, 150)));
+    function clearHistoryFilters() { [histFrom, histTo, histSym, histMatch, histText].forEach(el => { if (el) el.value = '' }); filterHistory() }
+    function toggleHistorySelectAll(box) {
+      histTBody.querySelectorAll('.hpick').forEach(cb => { const tr = cb.closest('tr'); if (tr.classList.contains('hidden')) return; cb.checked = box.checked });
+      updateHistorySelection();
+    }
+    function updateHistorySelection() {
+      let count = 0, sum = 0;
+      histTBody.querySelectorAll('tr').forEach(tr => {
+        const cb = tr.querySelector('.hpick');
+        if (cb && cb.checked) {
+          count++;
+          const diffCell = tr.querySelector('td:nth-child(7)');
+          const v = parseFloat((diffCell?.textContent || '0').replace(/,/g, '')); if (!isNaN(v)) sum += v;
+        }
+      });
+      if (histSelChip) histSelChip.querySelector('b').textContent = count;
+      if (histDiffChip) histDiffChip.querySelector('b').textContent = sum.toFixed(2);
+    }
+    async function recallHistorySelected() {
+      const rows = []; histTBody.querySelectorAll('tr').forEach(tr => {
+        const cb = tr.querySelector('.hpick'); if (cb && cb.checked) {
+          try { rows.push(JSON.parse(decodeURIComponent(tr.dataset.row))) } catch { }
+        }
+      });
+      if (rows.length === 0) { toast('Select one or more history rows'); return }
+      try {
+        const r = await fetch('{{ url_for("history_recall") }}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ rows }) });
+        const j = await r.json(); if (!r.ok || !j.ok) { toast(j.error || 'Recall failed'); return }
+        rebuildUnmatchedTable(j.um || []); toast(`Recalled ${rows.length} row(s) to Recon`); closeHistoryModal();
+      } catch (e) { toast('Recall failed') }
+    }
+
+    // ---- Carry-Forward handlers (NEW) ----
+    async function saveCarry() {
+      try {
+        const r = await fetch('/carry/save', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          toast(j.error || 'Save carry-forward failed');
+          return;
+        }
+        toast(`Saved ${j.saved || 0} unmatched row(s) to carry-forward`);
+      } catch (e) {
+        toast('Save carry-forward failed');
+      }
+    }
+
+    async function loadCarry() {
+      try {
+        const r = await fetch('/carry/load', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          toast(j.error || 'Load carry-forward failed');
+          return;
+        }
+        rebuildUnmatchedTable(j.um || []);
+        toast(`Loaded ${j.added || 0} carry-forward row(s)`);
+      } catch (e) {
+        toast('Load carry-forward failed');
+      }
+    }
+
+    // --- Import Previous Rec (.xlsx / .csv) ---
+    async function importPrevRec() {
+      const inp = document.getElementById('prevRec');
+      if (!inp || !inp.files.length) { toast('Choose a file to import'); return; }
+      const fd = new FormData(); fd.append('prev_rec', inp.files[0]);
+      try {
+        const res = await fetch('{{ url_for("import_previous_rec") }}', { method: 'POST', body: fd });
+        const j = await res.json();
+        if (!res.ok || !j.ok) { toast(j.error || 'Import failed'); return; }
+        rebuildUnmatchedTable(j.um || []); toast(`Imported ${j.added || 0} row(s)`); inp.value = '';
+      } catch (e) { toast('Import failed') }
+    }
+
+    // --- Import Manual Transactions (.xlsx / .csv) ---
+    async function importManualTx() {
+      const inp = document.getElementById('manualTx');
+      if (!inp || !inp.files.length) { toast('Choose a file to add'); return; }
+      const fd = new FormData(); fd.append('tx_file', inp.files[0]);
+      try {
+        const res = await fetch('{{ url_for("manual_add") }}', { method: 'POST', body: fd });
+        const j = await res.json();
+        if (!res.ok || !j.ok) { toast(j.error || 'Manual add failed'); return; }
+        rebuildUnmatchedTable(j.um || []); toast(`Added ${j.added || 0} transaction(s)`); inp.value = '';
+      } catch (e) { toast('Manual add failed') }
+    }
+
+    // initial dock numbers
+    writeDock();
+
+
+  (function () {
+    const brSel = document.getElementById('broker');
+    const brInp = document.getElementById('broker_file');
+    const brLbl = document.getElementById('brokerFileLabel');
+    const brHelp = document.getElementById('brokerHelp');
+
+    function setForGTNA(on) {
+      // reset first
+      brInp.removeAttribute('multiple');
+      brInp.removeAttribute('webkitdirectory');
+      brInp.removeAttribute('mozdirectory');
+      brInp.removeAttribute('directory');
+      brInp.value = '';
+
+      if (on) {
+        brInp.setAttribute('multiple', '');
+        // folder-pick (works in Chromium/Edge)
+        brInp.setAttribute('webkitdirectory', '');
+        // accept only CSV for GTNA
+        brInp.setAttribute('accept', '.csv');
+        brLbl.textContent = 'Broker Files (CSV folder or multiple .csv)';
+        brHelp.textContent = 'GTNA: select a folder or multiple CSV files. Filter uses Value Date; Rec shows Trans.Date. Buy/Sell are aggregated by Trade Date.';
+      } else {
+        brInp.setAttribute('accept', '.csv,.xlsx,.pdf');
+        brLbl.textContent = 'Broker File (.csv,.xlsx,.pdf)';
+        brHelp.textContent = '';
+      }
+    }
+
+    async function goToHome() {
+  try {
+    await fetch('{{ url_for("reset_session") }}', { method: 'POST' });
+    window.location = '{{ url_for("index") }}';
+  } catch (e) {
+    window.location = '{{ url_for("index") }}';
+  }
+}
+
+    function applyBrokerMode() {
+      const v = (brSel?.value || '').toLowerCase();
+      setForGTNA(v === 'gtna');
+    }
+
+    brSel?.addEventListener('change', applyBrokerMode);
+    // run on load to match pre-selected value
+    applyBrokerMode();
+  })();
+
+
+  </script>
+
+</body>
+</html>
