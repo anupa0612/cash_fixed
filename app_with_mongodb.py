@@ -1424,6 +1424,10 @@ def build_rec_route():
             account=account, recon_date="",
             broker=broker_key  # persist normalized broker
         )
+         # ALSO save this rec by account in MongoDB for "View Existing Rec"
+        if mongo_handler and mongo_handler.is_connected() and account:
+            mongo_handler.save_account_rec(account, rec)
+
 
         um = _df_unmatched(rec)
         stats = {
