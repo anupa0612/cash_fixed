@@ -113,6 +113,60 @@ class MongoDBHandler:
         except Exception as e:
             print(f"Error loading session rec from MongoDB: {str(e)}")
             return None
+
+        # --------------------------------------------------------------------------------------
+    # Per-Account Last Reconciliation (for "View Existing Rec")
+    # --------------------------------------------------------------------------------------
+    def save_account_rec(self, account, df, metadata=None):
+        """
+        Save last reconciliation for a given account.
+        Used by: build_rec → later loaded by /view_rec
+        """
+        if not self.connected or not account or df is None:
+            return False
+
+        try:
+            collection = self.db['account_rec']  # new collection name
+
+            records = df.to_dict('records')
+
+            doc = {
+                'account': account,
+                'data': records,
+                'columns': list(df.columns),
+                'metadata': metadata or {},
+                'updated_at': datetime.now()
+            }
+
+            collection.update_one(
+                {'account': account},
+                {'$set': doc},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving account rec to MongoDB: {str(e)}")
+            return False
+
+    def load_account_rec(self, account):
+        """
+        Load last reconciliation for a given account.
+        Used by: /view_rec
+        """
+        if not self.connected or not account:
+            return None
+
+        try:
+            collection = self.db['account_rec']
+            doc = collection.find_one({'account': account})
+
+            if doc and 'data' in doc:
+                return pd.DataFrame(doc['data'], columns=doc.get('columns', []))
+            return None
+        except Exception as e:
+            print(f"Error loading account rec from MongoDB: {str(e)}")
+            return None
+
     
     # --------------------------------------------------------------------------------------
     # Carry Forward Operations (carry_unmatched.pkl)
